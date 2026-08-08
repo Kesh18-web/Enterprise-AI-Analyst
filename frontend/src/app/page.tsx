@@ -487,7 +487,7 @@ export default function AnalystWorkbench() {
     try {
       const response = await fetch("http://localhost:8000/api/v1/analyze/stream", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: getAuthHeaders({ "Content-Type": "application/json" }),
         body: JSON.stringify({
           query: userMsg.content,
           session_id: sessionId,
@@ -784,8 +784,8 @@ export default function AnalystWorkbench() {
                 <div className="flex items-center gap-2">
                   <MessageSquare className="h-4 w-4 text-indigo-400" />
                   <span className="text-sm font-semibold text-slate-200">{activeChat?.name}</span>
-                  <span className="text-xs text-slate-500 font-mono">
-                    session: {activeChat?.id?.slice(0, 8) || "init"}…
+                  <span className="text-xs font-mono text-slate-400 bg-slate-800/60 px-2 py-0.5 rounded border border-slate-700/60">
+                    {activeChat?.id}
                   </span>
                   {activeChat?.attachedFiles && activeChat.attachedFiles.length > 0 && (
                     <span className="text-[11px] text-cyan-400 bg-cyan-500/10 px-2 py-0.5 rounded-full border border-cyan-500/30 flex items-center gap-1 font-medium ml-2">
