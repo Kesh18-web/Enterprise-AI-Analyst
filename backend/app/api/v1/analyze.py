@@ -4,9 +4,10 @@ import json
 import time
 import uuid
 from typing import AsyncGenerator, Optional, Dict, Any
-from fastapi import APIRouter
+from fastapi import APIRouter, Depends
 from pydantic import BaseModel
 from starlette.responses import StreamingResponse
+from backend.app.core.auth import get_current_user
 from backend.app.core.logging import logger
 from backend.app.core.state import AnalystState
 from backend.app.db.firestore import firestore_db
@@ -25,7 +26,7 @@ class AnalyzeRequest(BaseModel):
 
 
 async def stream_analysis_events(
-    query: str, session_id: str, search_scope: str = "session",
+    query: str, session_id: str, user_id: str, search_scope: str = "session",
     model_preference: str = "auto",
 ) -> AsyncGenerator[str, None]:
     """Async generator streaming LangGraph state machine node updates via SSE."""
@@ -137,7 +138,7 @@ async def stream_analysis_events(
             "memoryCompacted": mem_context.get("memory_compacted", False),
             "searchScope": search_scope,
         }
-        firestore_db.save_chat_message(session_id, assistant_msg_data)
+        firestore_db.save_chat_message(user_id, session_id, assistant_msg_data)
 
         # Final result event
         final_payload = {
@@ -166,13 +167,14 @@ async def stream_analysis_events(
 
 
 @router.post("/stream")
-async def analyze_stream(req: AnalyzeRequest):
+async def analyze_stream(req: AnalyzeRequest, current_user: dict = Depends(get_current_user)):
     """Stream real-time agent execution events and analysis report using Server-Sent Events (SSE)."""
     session_id = req.session_id or f"session-{str(uuid.uuid4())[:8]}"
     search_scope = req.search_scope or "session"
     model_preference = req.model_preference or "auto"
+    user_id = current_user["uid"]
     return StreamingResponse(
-        stream_analysis_events(req.query, session_id, search_scope, model_preference),
+        stream_analysis_events(req.query, session_id, user_id, search_scope, model_preference),
         media_type="text/event-stream",
         headers={
             "Cache-Control": "no-cache",

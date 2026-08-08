@@ -1,8 +1,9 @@
 from datetime import datetime
 from typing import Any, Dict, List, Optional
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 
+from backend.app.core.auth import get_current_user
 from backend.app.core.logging import logger
 from backend.app.db.firestore import firestore_db
 
@@ -23,10 +24,11 @@ class UpdateSessionRequest(BaseModel):
 
 
 @router.get("")
-async def list_sessions():
-    """Fetch all active chat sessions from GCP Firestore."""
+async def list_sessions(current_user: dict = Depends(get_current_user)):
+    """Fetch all chat sessions for the authenticated user from GCP Firestore."""
     try:
-        sessions = firestore_db.list_chat_sessions()
+        user_id = current_user["uid"]
+        sessions = firestore_db.list_chat_sessions(user_id)
         return {"sessions": sessions}
     except Exception as e:
         logger.error(f"Error listing sessions: {e}")
@@ -34,17 +36,19 @@ async def list_sessions():
 
 
 @router.post("")
-async def create_session(req: CreateSessionRequest):
-    """Create a new persistent chat session record in Firestore."""
+async def create_session(req: CreateSessionRequest, current_user: dict = Depends(get_current_user)):
+    """Create a new persistent chat session for the authenticated user in Firestore."""
     try:
+        user_id = current_user["uid"]
         session_data = {
             "id": req.id,
             "name": req.name,
             "createdAt": int(datetime.utcnow().timestamp() * 1000),
             "searchScope": req.searchScope,
             "attachedFiles": req.attachedFiles,
+            "userId": user_id,
         }
-        firestore_db.save_chat_session(req.id, session_data)
+        firestore_db.save_chat_session(user_id, req.id, session_data)
         return {"status": "success", "session": session_data}
     except Exception as e:
         logger.error(f"Error creating session [{req.id}]: {e}")
@@ -52,10 +56,11 @@ async def create_session(req: CreateSessionRequest):
 
 
 @router.get("/{session_id}/messages")
-async def get_session_messages(session_id: str):
-    """Fetch message history for a specific session from Firestore."""
+async def get_session_messages(session_id: str, current_user: dict = Depends(get_current_user)):
+    """Fetch message history for a specific session (auth-scoped)."""
     try:
-        messages = firestore_db.get_chat_messages(session_id)
+        user_id = current_user["uid"]
+        messages = firestore_db.get_chat_messages(user_id, session_id)
         return {"session_id": session_id, "messages": messages}
     except Exception as e:
         logger.error(f"Error fetching messages for session [{session_id}]: {e}")
@@ -63,10 +68,11 @@ async def get_session_messages(session_id: str):
 
 
 @router.post("/{session_id}/messages")
-async def add_session_message(session_id: str, message: Dict[str, Any]):
-    """Add a user or assistant message to a session in Firestore."""
+async def add_session_message(session_id: str, message: Dict[str, Any], current_user: dict = Depends(get_current_user)):
+    """Add a message to a session in Firestore (auth-scoped)."""
     try:
-        firestore_db.save_chat_message(session_id, message)
+        user_id = current_user["uid"]
+        firestore_db.save_chat_message(user_id, session_id, message)
         return {"status": "success"}
     except Exception as e:
         logger.error(f"Error adding message to session [{session_id}]: {e}")
@@ -74,9 +80,10 @@ async def add_session_message(session_id: str, message: Dict[str, Any]):
 
 
 @router.patch("/{session_id}")
-async def update_session(session_id: str, req: UpdateSessionRequest):
-    """Update session metadata (title, searchScope, attachedFiles) in Firestore."""
+async def update_session(session_id: str, req: UpdateSessionRequest, current_user: dict = Depends(get_current_user)):
+    """Update session metadata (auth-scoped)."""
     try:
+        user_id = current_user["uid"]
         update_data = {}
         if req.name is not None:
             update_data["name"] = req.name
@@ -86,7 +93,7 @@ async def update_session(session_id: str, req: UpdateSessionRequest):
             update_data["attachedFiles"] = req.attachedFiles
 
         if update_data:
-            firestore_db.save_chat_session(session_id, update_data)
+            firestore_db.save_chat_session(user_id, session_id, update_data)
         return {"status": "success", "updated": update_data}
     except Exception as e:
         logger.error(f"Error updating session [{session_id}]: {e}")
@@ -94,16 +101,19 @@ async def update_session(session_id: str, req: UpdateSessionRequest):
 
 
 @router.delete("/{session_id}")
-async def delete_session(session_id: str):
-    """Delete session and all its messages from Firestore."""
+async def delete_session(session_id: str, current_user: dict = Depends(get_current_user)):
+    """Delete session and all its messages (auth-scoped)."""
     try:
-        firestore_db.delete_chat_session(session_id)
+        user_id = current_user["uid"]
+        firestore_db.delete_chat_session(user_id, session_id)
         return {"status": "success", "deleted_session_id": session_id}
     except Exception as e:
         logger.error(f"Error deleting session [{session_id}]: {e}")
         raise HTTPException(status_code=500, detail=str(e))
+
+
 @router.post("/{session_id}/generate-name")
-async def generate_session_name(session_id: str, body: Dict[str, Any]):
+async def generate_session_name(session_id: str, body: Dict[str, Any], current_user: dict = Depends(get_current_user)):
     """
     Generate a concise, ChatGPT-style session title from the first user query.
     Uses unified LLM factory with a tight prompt to produce a clean 4-6 word title.
@@ -112,6 +122,7 @@ async def generate_session_name(session_id: str, body: Dict[str, Any]):
     try:
         from backend.app.core.llm import get_llm, extract_text_content
 
+        user_id = current_user["uid"]
         first_query = body.get("query", "").strip()
         if not first_query:
             raise HTTPException(status_code=400, detail="query field is required")
@@ -128,13 +139,13 @@ async def generate_session_name(session_id: str, body: Dict[str, Any]):
 
         # Truncate hard limit safety
         if len(name) > 60:
-            name = name[:57] + "…"
+            name = name[:57] + "\u2026"
 
-        firestore_db.save_chat_session(session_id, {"name": name})
-        logger.info(f"[Sessions] Auto-named session '{session_id}' → '{name}'")
+        firestore_db.save_chat_session(user_id, session_id, {"name": name})
+        logger.info(f"[Sessions] Auto-named session '{session_id}' \u2192 '{name}'")
         return {"status": "success", "name": name}
 
     except Exception as e:
         logger.error(f"Error generating name for session [{session_id}]: {e}")
-        fallback = first_query[:40] + "…" if len(first_query) > 40 else first_query
+        fallback = first_query[:40] + "\u2026" if len(first_query) > 40 else first_query
         return {"status": "fallback", "name": fallback}

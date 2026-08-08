@@ -2,9 +2,10 @@ import io
 import uuid
 from datetime import datetime
 from typing import Any, Dict, List, Optional
-from fastapi import APIRouter, File, Form, HTTPException, UploadFile
+from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
 from pydantic import BaseModel
 
+from backend.app.core.auth import get_current_user
 from backend.app.core.logging import logger
 from backend.app.db.bm25 import bm25_mgr
 from backend.app.db.firestore import firestore_db
@@ -22,15 +23,16 @@ class DocumentUploadRequest(BaseModel):
 
 
 @router.post("/index")
-async def index_document(req: DocumentUploadRequest):
+async def index_document(req: DocumentUploadRequest, current_user: dict = Depends(get_current_user)):
     """Index document text content into BM25 Keyword store, Qdrant Dense Vector store, and Firestore metadata."""
     try:
         import hashlib
+        user_id = current_user["uid"]
         content_hash = hashlib.sha256(req.content.encode("utf-8")).hexdigest()[:12]
         doc_id = f"doc_{content_hash}"
 
         # ── DEDUPLICATION CHECK ──
-        existing_doc = firestore_db.get_document("uploaded_documents", doc_id)
+        existing_doc = firestore_db.get_document(user_id, "uploaded_documents", doc_id)
         if existing_doc and existing_doc.get("session_id") == req.session_id:
             logger.info(
                 f"[DocumentDeduplication] Document '{req.title}' (hash={content_hash}) already indexed for session '{req.session_id}'. Skipping indexing."
@@ -79,6 +81,7 @@ async def index_document(req: DocumentUploadRequest):
 
         # 3. Persist Document Metadata into GCP Firestore
         firestore_db.save_document(
+            user_id=user_id,
             collection_name="uploaded_documents",
             doc_id=doc_id,
             data={
@@ -111,10 +114,12 @@ async def upload_file(
     file: UploadFile = File(...),
     title: Optional[str] = Form(None),
     session_id: str = Form("default_session"),
+    current_user: dict = Depends(get_current_user),
 ):
     """Upload raw PDF or text document file, extract content, and index into hybrid search stores."""
     try:
         import hashlib
+        user_id = current_user["uid"]
         content_bytes = await file.read()
         doc_title = title or file.filename or "Uploaded Document"
         filename_lower = (file.filename or "").lower()
@@ -124,7 +129,7 @@ async def upload_file(
         doc_id = f"doc_{content_hash}"
 
         # ── DEDUPLICATION CHECK: Skip pipeline if file content is identical ──
-        existing_doc = firestore_db.get_document("uploaded_documents", doc_id)
+        existing_doc = firestore_db.get_document(user_id, "uploaded_documents", doc_id)
         if existing_doc and (existing_doc.get("session_id") == session_id or session_id in ["global", "global_workspace"]):
             is_global = session_id in ["global", "global_workspace"]
             msg = "Document already uploaded in Global Workspace." if is_global else "Document already uploaded in this session."
@@ -205,6 +210,7 @@ async def upload_file(
 
         # 3. Persist Document Metadata into GCP Firestore
         firestore_db.save_document(
+            user_id=user_id,
             collection_name="uploaded_documents",
             doc_id=doc_id,
             data={
