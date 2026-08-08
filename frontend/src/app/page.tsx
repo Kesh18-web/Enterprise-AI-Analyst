@@ -105,14 +105,16 @@ function createChat(name = "New Chat"): ChatSession {
   };
 }
 
-const INITIAL_CHAT: ChatSession = {
-  id: "session-init-1",
-  name: "Chat 1",
-  createdAt: 1700000000000,
-  messages: [],
-  searchScope: "session",
-  attachedFiles: [],
-};
+function createInitialChat(): ChatSession {
+  return {
+    id: genId(),
+    name: "Chat 1",
+    createdAt: Date.now(),
+    messages: [],
+    searchScope: "session",
+    attachedFiles: [],
+  };
+}
 
 // ─── Main Component ──────────────────────────────────────────────────────────
 
@@ -137,7 +139,7 @@ export default function AnalystWorkbench() {
   >("workbench");
 
   // ── Chat State (Firestore Backend Sync) ────────────────────────────────────
-  const [chats, setChats] = useState<ChatSession[]>([INITIAL_CHAT]);
+  const [chats, setChats] = useState<ChatSession[]>([]);
   const [activeChatId, setActiveChatId] = useState<string>("session-init-1");
   const activeChat = chats.find((c) => c.id === activeChatId) ?? chats[0];
 
@@ -192,17 +194,20 @@ export default function AnalystWorkbench() {
               loadMessagesForSession(targetId);
             }
           } else {
-            // First time setup — seed initial chat in Firestore
+            // First time setup — seed initial fresh chat in Firestore for this user
+            const freshChat = createInitialChat();
             await fetch("http://localhost:8000/api/v1/sessions", {
               method: "POST",
-              headers: { "Content-Type": "application/json" },
+              headers: getAuthHeaders({ "Content-Type": "application/json" }),
               body: JSON.stringify({
-                id: INITIAL_CHAT.id,
-                name: INITIAL_CHAT.name,
-                searchScope: INITIAL_CHAT.searchScope,
-                attachedFiles: INITIAL_CHAT.attachedFiles,
+                id: freshChat.id,
+                name: freshChat.name,
+                searchScope: freshChat.searchScope,
+                attachedFiles: freshChat.attachedFiles,
               }),
             }).catch(() => null);
+            setChats([freshChat]);
+            setActiveChatId(freshChat.id);
           }
         }
       } catch (err) {
@@ -592,7 +597,7 @@ export default function AnalystWorkbench() {
     try {
       const res = await fetch("http://localhost:8000/api/v1/documents/index", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: getAuthHeaders({ "Content-Type": "application/json" }),
         body: JSON.stringify({
           title: docTitle,
           source_name: docSource || "Lab Document",
@@ -1209,6 +1214,7 @@ export default function AnalystWorkbench() {
                         try {
                           const res = await fetch("http://localhost:8000/api/v1/documents/upload", {
                             method: "POST",
+                            headers: getAuthHeaders(),
                             body: formData,
                           });
                           if (!res.ok) throw new Error("Upload failed");
