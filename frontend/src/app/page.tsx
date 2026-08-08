@@ -1,6 +1,8 @@
 "use client";
 
 import React, { useState, useEffect, useRef, useCallback } from "react";
+import { useRouter } from "next/navigation";
+import { useAuth } from "@/context/AuthContext";
 import {
   Brain,
   ShieldCheck,
@@ -30,6 +32,7 @@ import {
   Cpu,
   PanelLeftClose,
   PanelLeftOpen,
+  LogOut,
 } from "lucide-react";
 
 // ─── Types ──────────────────────────────────────────────────────────────────
@@ -113,7 +116,22 @@ const INITIAL_CHAT: ChatSession = {
 
 // ─── Main Component ──────────────────────────────────────────────────────────
 
-export default function AnalystDashboard() {
+export default function AnalystWorkbench() {
+  const { user, idToken, loading: authLoading, signOut } = useAuth();
+  const router = useRouter();
+
+  // Auth Guard: Redirect unauthenticated users to /login
+  useEffect(() => {
+    if (!authLoading && !user) {
+      router.push("/login");
+    }
+  }, [user, authLoading, router]);
+  
+  const getAuthHeaders = useCallback((extra = {}) => ({
+    "Authorization": `Bearer ${idToken}`,
+    ...extra
+  }), [idToken]);
+
   const [activeTab, setActiveTab] = useState<
     "workbench" | "indexing" | "observability" | "architect"
   >("workbench");
@@ -127,7 +145,9 @@ export default function AnalystDashboard() {
   const loadMessagesForSession = useCallback(async (sessionId: string) => {
     if (!sessionId || sessionId === "undefined") return;
     try {
-      const res = await fetch(`http://localhost:8000/api/v1/sessions/${sessionId}/messages`).catch(() => null);
+      const res = await fetch(`http://localhost:8000/api/v1/sessions/${sessionId}/messages`, {
+        headers: getAuthHeaders(),
+      }).catch(() => null);
       if (res && res.ok) {
         const data = await res.json().catch(() => null);
         if (data && data.messages && Array.isArray(data.messages)) {
@@ -145,10 +165,11 @@ export default function AnalystDashboard() {
     } catch (err) {
       console.warn(`Could not load messages for session [${sessionId}]:`, err);
     }
-  }, []);
+  }, [getAuthHeaders]);
 
   // Fetch all chat sessions from Firestore API on mount
   useEffect(() => {
+    if (!idToken) return;
     const fetchSessions = async () => {
       try {
         const res = await fetch("http://localhost:8000/api/v1/sessions").catch(() => null);
@@ -262,7 +283,7 @@ export default function AnalystDashboard() {
     try {
       await fetch(`http://localhost:8000/api/v1/sessions/${activeChat.id}`, {
         method: "PATCH",
-        headers: { "Content-Type": "application/json" },
+        headers: getAuthHeaders({ "Content-Type": "application/json" }),
         body: JSON.stringify({ searchScope: nextScope }),
       });
     } catch (err) {
@@ -285,7 +306,7 @@ export default function AnalystDashboard() {
     try {
       await fetch("http://localhost:8000/api/v1/sessions", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: getAuthHeaders({ "Content-Type": "application/json" }),
         body: JSON.stringify({
           id: chat.id,
           name: chat.name,
@@ -316,6 +337,7 @@ export default function AnalystDashboard() {
     try {
       await fetch(`http://localhost:8000/api/v1/sessions/${chatId}`, {
         method: "DELETE",
+        headers: getAuthHeaders(),
       });
     } catch (err) {
       console.error("Error deleting session from Firestore:", err);
@@ -337,7 +359,7 @@ export default function AnalystDashboard() {
     try {
       const res = await fetch(`http://localhost:8000/api/v1/sessions/${chatId}/generate-name`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: getAuthHeaders({ "Content-Type": "application/json" }),
         body: JSON.stringify({ query: firstQuery }),
       });
       if (res.ok) {
@@ -369,6 +391,7 @@ export default function AnalystDashboard() {
     try {
       const res = await fetch("http://localhost:8000/api/v1/documents/upload", {
         method: "POST",
+        headers: getAuthHeaders(),
         body: formData,
       });
 
@@ -445,7 +468,7 @@ export default function AnalystDashboard() {
     try {
       fetch(`http://localhost:8000/api/v1/sessions/${chat.id}/messages`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: getAuthHeaders({ "Content-Type": "application/json" }),
         body: JSON.stringify(userMsg),
       }).catch((e) => console.error("Error saving user message to Firestore:", e));
     } catch (_) {}
@@ -837,6 +860,34 @@ export default function AnalystDashboard() {
                       {activeChat?.searchScope === "global" ? "ON" : "OFF"}
                     </span>
                   </button>
+
+                  {/* User Profile & Logout */}
+                  {user && (
+                    <div className="flex items-center gap-2 pl-2 border-l border-slate-800">
+                      {user.photoURL ? (
+                        <img
+                          src={user.photoURL}
+                          alt={user.displayName || "User"}
+                          className="w-7 h-7 rounded-full border border-slate-700 object-cover"
+                        />
+                      ) : (
+                        <div className="w-7 h-7 rounded-full bg-indigo-600 text-white text-xs font-bold flex items-center justify-center">
+                          {(user.displayName || user.email || "U")[0].toUpperCase()}
+                        </div>
+                      )}
+                      <span className="text-xs font-medium text-slate-300 hidden md:inline max-w-[100px] truncate">
+                        {user.displayName || user.email?.split("@")[0]}
+                      </span>
+                      <button
+                        type="button"
+                        onClick={signOut}
+                        className="p-1.5 rounded-lg text-slate-400 hover:text-rose-400 hover:bg-slate-800 transition"
+                        title="Sign Out"
+                      >
+                        <LogOut className="h-4 w-4" />
+                      </button>
+                    </div>
+                  )}
                 </div>
               </div>
 
