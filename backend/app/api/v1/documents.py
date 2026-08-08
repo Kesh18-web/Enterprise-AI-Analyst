@@ -33,7 +33,8 @@ async def index_document(req: DocumentUploadRequest, current_user: dict = Depend
 
         # ── DEDUPLICATION CHECK ──
         existing_doc = firestore_db.get_document(user_id, "uploaded_documents", doc_id)
-        if existing_doc and existing_doc.get("session_id") == req.session_id:
+        has_index_chunks = any(c.get("doc_id") == doc_id for c in bm25_mgr.chunks)
+        if existing_doc and has_index_chunks and existing_doc.get("session_id") == req.session_id:
             logger.info(
                 f"[DocumentDeduplication] Document '{req.title}' (hash={content_hash}) already indexed for session '{req.session_id}'. Skipping indexing."
             )
@@ -128,9 +129,10 @@ async def upload_file(
         content_hash = hashlib.sha256(content_bytes).hexdigest()[:12]
         doc_id = f"doc_{content_hash}"
 
-        # ── DEDUPLICATION CHECK: Skip pipeline if file content is identical ──
+        # ── DEDUPLICATION CHECK: Skip pipeline if file content is identical AND chunks exist in index ──
         existing_doc = firestore_db.get_document(user_id, "uploaded_documents", doc_id)
-        if existing_doc and (existing_doc.get("session_id") == session_id or session_id in ["global", "global_workspace"]):
+        has_index_chunks = any(c.get("doc_id") == doc_id for c in bm25_mgr.chunks)
+        if existing_doc and has_index_chunks and (existing_doc.get("session_id") == session_id or session_id in ["global", "global_workspace"]):
             is_global = session_id in ["global", "global_workspace"]
             msg = "Document already uploaded in Global Workspace." if is_global else "Document already uploaded in this session."
             logger.info(

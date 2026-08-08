@@ -12,6 +12,7 @@ class JudgeAgent:
     def evaluate_output(self, state: AnalystState) -> Dict[str, float]:
         """Compute LLM-as-a-Judge evaluation scores using reasoning model and persist to Firestore."""
         trace_id = state.get("trace_id", "N/A")
+        user_id = state.get("user_id", "system")
         query = state.get("user_query", "")
         report = state.get("analysis_report", "")
         context_text = state.get("context_text", "")
@@ -28,8 +29,8 @@ class JudgeAgent:
             import time
             for attempt in range(3):
                 try:
-                    # Use Groq Llama 70B for fast 0.4s LLM-as-a-Judge metric calculation
-                    judge_llm = get_llm(model_name="groq/llama-70b", temperature=0.0)
+                    # Use Gemini 2.5 Flash for metric calculation without Groq quota limits
+                    judge_llm = get_llm(model_name="gemini-2.5-flash", temperature=0.0)
                     
                     if not requires_rag:
                         prompt = f"""
@@ -120,6 +121,7 @@ Return ONLY a valid JSON object with these exact keys:
                         "requires_rag": requires_rag,
                     }
                     firestore_db.save_document(
+                        user_id=user_id or "system",
                         collection_name="evaluation_metrics",
                         doc_id=trace_id,
                         data=eval_record,
@@ -170,6 +172,7 @@ Return ONLY a valid JSON object with these exact keys:
                 "requires_rag": requires_rag,
             }
             firestore_db.save_document(
+                user_id=user_id or "system",
                 collection_name="evaluation_metrics",
                 doc_id=trace_id,
                 data=eval_record,

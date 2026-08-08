@@ -120,9 +120,10 @@ class BM25Indexer:
                     chunk_copy = dict(self.chunks[idx])
                     chunk_sess = chunk_copy.get("session_id")
 
-                    # Filter by session if specified
-                    if target_sessions and chunk_sess and chunk_sess not in target_sessions:
-                        continue
+                    # Filter by session if specified (strict isolation)
+                    if target_sessions:
+                        if not chunk_sess or chunk_sess not in target_sessions:
+                            continue
 
                     chunk_copy["score"] = float(score)
                     chunk_copy["retrieval_method"] = "bm25"
