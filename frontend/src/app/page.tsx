@@ -139,8 +139,8 @@ export default function AnalystWorkbench() {
   >("workbench");
 
   // ── Chat State (Firestore Backend Sync) ────────────────────────────────────
-  const [chats, setChats] = useState<ChatSession[]>([]);
-  const [activeChatId, setActiveChatId] = useState<string>("session-init-1");
+  const [chats, setChats] = useState<ChatSession[]>(() => [createInitialChat()]);
+  const [activeChatId, setActiveChatId] = useState<string>("");
   const activeChat = chats.find((c) => c.id === activeChatId) ?? chats[0];
 
   // Helper to load messages for a specific session from Firestore
@@ -283,6 +283,7 @@ export default function AnalystWorkbench() {
   );
 
   const toggleSearchScope = async () => {
+    if (!activeChat) return;
     const nextScope = activeChat.searchScope === "session" ? "global" : "session";
     updateChat(activeChat.id, (c) => ({ ...c, searchScope: nextScope }));
     try {
