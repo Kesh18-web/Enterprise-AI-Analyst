@@ -58,6 +58,10 @@ async def get_current_user(
             _google_request,
             audience=settings.FIREBASE_PROJECT_ID,
         )
+        # Normalize 'uid' field — raw Google JWT claims contain 'user_id' or 'sub',
+        # whereas Firebase Admin SDK sets 'uid'. Downstream endpoints expect 'uid'.
+        if "uid" not in decoded or not decoded["uid"]:
+            decoded["uid"] = decoded.get("user_id") or decoded.get("sub") or "anonymous_user"
         return decoded
 
     except ValueError as e:
