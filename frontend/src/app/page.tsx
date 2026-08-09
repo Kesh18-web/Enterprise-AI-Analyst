@@ -134,14 +134,20 @@ export default function AnalystWorkbench() {
     ...extra
   }), [idToken]);
 
+  const [mounted, setMounted] = useState(false);
   const [activeTab, setActiveTab] = useState<
     "workbench" | "indexing" | "observability" | "architect"
   >("workbench");
 
   // ── Chat State (Firestore Backend Sync) ────────────────────────────────────
-  const [chats, setChats] = useState<ChatSession[]>(() => [createInitialChat()]);
+  const [chats, setChats] = useState<ChatSession[]>([]);
   const [activeChatId, setActiveChatId] = useState<string>("");
   const activeChat = chats.find((c) => c.id === activeChatId) ?? chats[0];
+
+  useEffect(() => {
+    setMounted(true);
+    setChats([createInitialChat()]);
+  }, []);
 
   // Helper to load messages for a specific session from Firestore
   const loadMessagesForSession = useCallback(async (sessionId: string) => {
@@ -174,7 +180,9 @@ export default function AnalystWorkbench() {
     if (!idToken) return;
     const fetchSessions = async () => {
       try {
-        const res = await fetch("http://localhost:8000/api/v1/sessions").catch(() => null);
+        const res = await fetch("http://localhost:8000/api/v1/sessions", {
+          headers: getAuthHeaders(),
+        }).catch(() => null);
         if (res && res.ok) {
           const data = await res.json().catch(() => null);
           if (data && data.sessions && Array.isArray(data.sessions) && data.sessions.length > 0) {
@@ -431,11 +439,22 @@ export default function AnalystWorkbench() {
         uploadStatus: isSkipped ? "skipped" : "success",
       };
 
+      const updatedFiles = activeChat.attachedFiles?.includes(file.name)
+        ? activeChat.attachedFiles
+        : [...(activeChat.attachedFiles || []), file.name];
+
       updateChat(activeChat.id, (c) => ({
         ...c,
-        attachedFiles: c.attachedFiles?.includes(file.name) ? c.attachedFiles : [...(c.attachedFiles || []), file.name],
+        attachedFiles: updatedFiles,
         messages: [...c.messages, attachMsg],
       }));
+
+      // Persist attachedFiles in Firestore session metadata
+      fetch(`http://localhost:8000/api/v1/sessions/${activeChat.id}`, {
+        method: "PATCH",
+        headers: getAuthHeaders({ "Content-Type": "application/json" }),
+        body: JSON.stringify({ attachedFiles: updatedFiles }),
+      }).catch((e) => console.error("Error persisting attachedFiles to Firestore:", e));
     } catch (err: any) {
       console.error("File upload error:", err);
       const isFetchErr = err?.message === "Failed to fetch" || err?.name === "TypeError";
@@ -641,6 +660,17 @@ export default function AnalystWorkbench() {
   };
 
   // ── Render ─────────────────────────────────────────────────────────────────
+
+  if (!mounted) {
+    return (
+      <div className="min-h-screen bg-[#090d16] flex items-center justify-center">
+        <div className="flex flex-col items-center gap-3">
+          <div className="w-8 h-8 border-2 border-indigo-500 border-t-transparent rounded-full animate-spin" />
+          <p className="text-slate-400 text-sm font-medium">Loading workspace layout...</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="flex h-screen flex-col bg-[#090d16] text-slate-100 overflow-hidden relative">
