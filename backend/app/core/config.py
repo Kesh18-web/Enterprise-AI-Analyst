@@ -24,6 +24,8 @@ class Settings(BaseSettings):
     ANTHROPIC_API_KEY: Optional[str] = None
     GEMINI_API_KEY: Optional[str] = None
     GROQ_API_KEY: Optional[str] = None
+    DEEPSEEK_API_KEY: Optional[str] = None
+    OPENROUTER_API_KEY: Optional[str] = None
 
     # LangSmith Observability
     LANGCHAIN_TRACING_V2: bool = False

@@ -1,7 +1,8 @@
 """
-LLM Factory — Direct dispatch using verified active Google AI Studio models & content extraction utilities.
+LLM Factory — Direct dispatch using verified models (DeepSeek V4/V3, Groq Llama 3.3 70B, Gemini 2.5 Flash)
+and content extraction utilities.
 """
-from typing import Any, Optional
+from typing import Any, List, Optional
 from langchain_core.language_models.chat_models import BaseChatModel
 
 from backend.app.core.config import settings
@@ -14,7 +15,7 @@ except ImportError:
     HAS_GEMINI = False
 
 try:
-    from langchain_openai import ChatOpenAI  # used for Groq (OpenAI-compatible)
+    from langchain_openai import ChatOpenAI  # used for Groq and OpenRouter DeepSeek
     HAS_OPENAI = True
 except ImportError:
     HAS_OPENAI = False
@@ -23,7 +24,7 @@ except ImportError:
 def extract_text_content(content: Any) -> str:
     """
     Safely extract plain text from an LLM response.content property.
-    Handles plain strings as well as multi-part list-of-dicts (e.g. [{'type': 'text', 'text': '...'}, ...]).
+    Handles plain strings as well as multi-part list-of-dicts.
     """
     if not content:
         return ""
@@ -44,8 +45,8 @@ def extract_text_content(content: Any) -> str:
     return str(content).strip()
 
 
-def _build_groq_llm(temperature: float = 0.0, max_tokens: Optional[int] = None) -> Optional[BaseChatModel]:
-    """Helper to build Groq Llama 3.3 70B model if configured."""
+def _build_groq_70b_model(temperature: float = 0.0, max_tokens: Optional[int] = None) -> Optional[BaseChatModel]:
+    """Helper to build Groq Llama 3.3 70B model instance."""
     if settings.GROQ_API_KEY and HAS_OPENAI:
         try:
             return ChatOpenAI(
@@ -54,10 +55,59 @@ def _build_groq_llm(temperature: float = 0.0, max_tokens: Optional[int] = None) 
                 base_url="https://api.groq.com/openai/v1",
                 temperature=temperature,
                 max_tokens=max_tokens,
-                max_retries=1,
+                max_retries=0,
             )
         except Exception as e:
-            logger.error(f"[LLM Factory] Failed to build Groq LLM: {e}")
+            logger.error(f"[LLM Factory] Failed to build Groq 70B model: {e}")
+    return None
+
+
+def _build_deepseek_model(temperature: float = 0.0, max_tokens: Optional[int] = None) -> Optional[BaseChatModel]:
+    """Helper to build DeepSeek V4 / V3 reasoning model instance via OpenRouter or DeepSeek Native API."""
+    if not HAS_OPENAI:
+        return None
+
+    api_key = settings.DEEPSEEK_API_KEY or settings.OPENROUTER_API_KEY
+    if api_key:
+        # Try OpenRouter API endpoint first (supports DeepSeek V4 Flash / V3)
+        try:
+            return ChatOpenAI(
+                model="deepseek/deepseek-chat",
+                api_key=api_key,
+                base_url="https://openrouter.ai/api/v1",
+                temperature=temperature,
+                max_tokens=max_tokens,
+                max_retries=0,
+            )
+        except Exception as e:
+            logger.warning(f"[LLM Factory] OpenRouter DeepSeek build failed ({e}), trying native DeepSeek API...")
+            try:
+                return ChatOpenAI(
+                    model="deepseek-chat",
+                    api_key=api_key,
+                    base_url="https://api.deepseek.com/v1",
+                    temperature=temperature,
+                    max_tokens=max_tokens,
+                    max_retries=0,
+                )
+            except Exception as ex:
+                logger.error(f"[LLM Factory] Failed to build DeepSeek model: {ex}")
+    return None
+
+
+def _build_gemini_flash_model(temperature: float = 0.0, max_tokens: Optional[int] = None) -> Optional[BaseChatModel]:
+    """Helper to build Gemini 2.5 Flash model instance."""
+    if settings.GEMINI_API_KEY and HAS_GEMINI:
+        try:
+            return ChatGoogleGenerativeAI(
+                model="gemini-2.5-flash",
+                google_api_key=settings.GEMINI_API_KEY,
+                temperature=temperature,
+                max_output_tokens=max_tokens,
+                max_retries=0,
+            )
+        except Exception as e:
+            logger.warning(f"[LLM Factory] Failed to build Gemini 2.5 Flash model: {e}")
     return None
 
 
@@ -67,77 +117,60 @@ def get_llm(
     max_tokens: Optional[int] = None,
 ) -> BaseChatModel:
     """
-    Unified LLM Factory with automatic rate-limit fallback.
-    Uses verified active model: 'gemini-2.5-flash' (1,500 RPD free tier limit).
+    Unified Flagship Production LLM Factory (DeepSeek V4/V3 + Groq Llama 3.3 70B + Gemini 2.5 Flash).
+    Zero Cheap Model Compromises.
+    Fallback Chain in Analysis Agent: DeepSeek -> Groq Llama 3.3 70B -> Gemini 2.5 Flash.
     """
-    model = (model_name or "gemini-2.5-flash").lower()
-    groq_fallback = _build_groq_llm(temperature=temperature, max_tokens=max_tokens)
+    model = (model_name or "deepseek").lower()
 
-    # ── 1. Groq Explicit Selection ──────────────────────────────────────────
-    if "groq" in model or "llama" in model:
-        if groq_fallback:
-            logger.debug("[LLM Factory] Dispatching → Groq / llama-3.3-70b-versatile")
-            return groq_fallback
-        logger.warning("[LLM Factory] Groq requested but unavailable — falling back to Gemini Flash.")
-        return _get_gemini_flash("gemini-2.5-flash", temperature, max_tokens)
+    # Build Tier-1 Flagship Provider Instances
+    deepseek_model = _build_deepseek_model(temperature, max_tokens)
+    groq_70b = _build_groq_70b_model(temperature, max_tokens)
+    gemini_flash = _build_gemini_flash_model(temperature, max_tokens)
 
-    # ── 2. Gemini Pro Selection ──────────────────────────────────────────────
-    if "pro" in model:
-        if settings.GEMINI_API_KEY and HAS_GEMINI:
-            logger.debug("[LLM Factory] Dispatching → gemini-2.5-pro")
-            primary = ChatGoogleGenerativeAI(
-                model="gemini-2.5-pro",
-                google_api_key=settings.GEMINI_API_KEY,
-                temperature=temperature,
-                max_output_tokens=max_tokens,
-                max_retries=0,
-            )
-            if groq_fallback:
-                return primary.with_fallbacks([groq_fallback], exceptions_to_handle=(Exception,))
-            return primary
-
-    # ── 3. Gemini Flash (Default: gemini-2.5-flash) ─────────────────────────
-    if settings.GEMINI_API_KEY and HAS_GEMINI:
-        logger.debug("[LLM Factory] Dispatching → gemini-2.5-flash")
-        primary = ChatGoogleGenerativeAI(
-            model="gemini-2.5-flash",
-            google_api_key=settings.GEMINI_API_KEY,
-            temperature=temperature,
-            max_output_tokens=max_tokens,
-            max_retries=0,
-        )
-        if groq_fallback:
-            return primary.with_fallbacks([groq_fallback], exceptions_to_handle=(Exception,))
+    def create_fallback_chain(primary: BaseChatModel, candidates: List[Optional[BaseChatModel]]) -> BaseChatModel:
+        valid_fallbacks = [c for c in candidates if c is not None and c != primary]
+        if valid_fallbacks:
+            return primary.with_fallbacks(valid_fallbacks, exceptions_to_handle=(Exception,))
         return primary
 
-    # If Gemini API key is missing, return Groq directly
-    if groq_fallback:
-        logger.warning("[LLM Factory] Gemini key missing — using Groq as primary.")
-        return groq_fallback
+    # ── 1. DeepSeek Selection (Default for Report Synthesis) ───────────────────
+    if "deepseek" in model:
+        if deepseek_model:
+            logger.debug("[LLM Factory] Dispatching → DeepSeek V4/V3 (with Groq 70B & Gemini 2.5 Flash fallbacks)")
+            return create_fallback_chain(deepseek_model, [groq_70b, gemini_flash])
+        if groq_70b:
+            logger.warning("[LLM Factory] DeepSeek requested but unavailable — falling back to Groq Llama 3.3 70B.")
+            return create_fallback_chain(groq_70b, [gemini_flash])
+        if gemini_flash:
+            return gemini_flash
 
-    raise RuntimeError("No active LLM provider found! Please check GEMINI_API_KEY or GROQ_API_KEY in backend/.env")
+    # ── 2. Groq Llama 3.3 70B Selection (Planner & Router) ───────────────────
+    if "groq" in model or "llama" in model or "70b" in model:
+        if groq_70b:
+            logger.debug("[LLM Factory] Dispatching → Groq / llama-3.3-70b-versatile (with DeepSeek & Gemini fallbacks)")
+            return create_fallback_chain(groq_70b, [deepseek_model, gemini_flash])
+        if deepseek_model:
+            return create_fallback_chain(deepseek_model, [gemini_flash])
+        if gemini_flash:
+            return gemini_flash
 
+    # ── 3. Gemini 2.5 Flash Selection (Reflection & Judge) ───────────────────
+    if "flash" in model or "gemini" in model or "pro" in model:
+        if gemini_flash:
+            logger.debug("[LLM Factory] Dispatching → Gemini 2.5 Flash (with DeepSeek & Groq 70B fallbacks)")
+            return create_fallback_chain(gemini_flash, [deepseek_model, groq_70b])
+        if deepseek_model:
+            return create_fallback_chain(deepseek_model, [groq_70b])
+        if groq_70b:
+            return groq_70b
 
-def _get_gemini_flash(
-    model_id: str = "gemini-2.5-flash",
-    temperature: float = 0.0,
-    max_tokens: Optional[int] = None,
-) -> BaseChatModel:
-    """Internal helper: returns Gemini Flash model with robust Groq fallback."""
-    groq_fallback = _build_groq_llm(temperature=temperature, max_tokens=max_tokens)
-    if settings.GEMINI_API_KEY and HAS_GEMINI:
-        primary = ChatGoogleGenerativeAI(
-            model=model_id,
-            google_api_key=settings.GEMINI_API_KEY,
-            temperature=temperature,
-            max_output_tokens=max_tokens,
-            max_retries=0,
-        )
-        if groq_fallback:
-            return primary.with_fallbacks([groq_fallback], exceptions_to_handle=(Exception,))
-        return primary
+    # Universal Fallback
+    if deepseek_model:
+        return create_fallback_chain(deepseek_model, [groq_70b, gemini_flash])
+    if groq_70b:
+        return create_fallback_chain(groq_70b, [gemini_flash])
+    if gemini_flash:
+        return gemini_flash
 
-    if groq_fallback:
-        return groq_fallback
-
-    raise RuntimeError("No LLM provider available.")
+    raise RuntimeError("No active Tier-1 LLM provider found! Please verify DEEPSEEK_API_KEY, GROQ_API_KEY, or GEMINI_API_KEY in backend/.env")
