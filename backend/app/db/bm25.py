@@ -74,9 +74,19 @@ class BM25Indexer:
             logger.warning(f"Could not persist BM25 index to disk: {e}")
             return False
 
+    def clear_in_memory_cache(self) -> None:
+        """Clear in-memory chunks and reset BM25 index."""
+        self.chunks = []
+        self.corpus_tokens = []
+        self.bm25_index = None
+        logger.info("[BM25Indexer] In-memory chunk cache cleared.")
+
     def load_from_disk(self) -> bool:
         """Load BM25 index and chunks from disk pickle file if available."""
-        if not HAS_BM25_LIB or not os.path.exists(self.storage_path):
+        if not HAS_BM25_LIB:
+            return False
+        if not os.path.exists(self.storage_path):
+            self.clear_in_memory_cache()
             return False
 
         try:
@@ -87,9 +97,12 @@ class BM25Indexer:
                 if self.corpus_tokens:
                     self.bm25_index = BM25Okapi(self.corpus_tokens)
                     logger.info(f"Loaded persistent BM25 Index ({len(self.chunks)} chunks) from '{self.storage_path}'")
-                    return True
+                else:
+                    self.bm25_index = None
+                return True
         except Exception as e:
             logger.warning(f"Could not load BM25 index from disk: {e}")
+            self.clear_in_memory_cache()
         return False
 
     def search_bm25(
@@ -116,7 +129,7 @@ class BM25Indexer:
             # Zip chunks with scores and sort descending
             scored_results = []
             for idx, score in enumerate(scores):
-                if score > 0.0:  # Only return chunks with non-zero keyword match
+                if score != 0.0:  # Only return chunks with non-zero keyword match (handles Rank-BM25 negative IDF on small corpora)
                     chunk_copy = dict(self.chunks[idx])
                     chunk_sess = chunk_copy.get("session_id")
 

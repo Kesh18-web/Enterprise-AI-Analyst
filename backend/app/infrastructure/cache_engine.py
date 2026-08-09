@@ -86,7 +86,7 @@ class EnterpriseCacheManager:
     - Semantic entries carry session_id and search_scope for isolation.
     """
 
-    def __init__(self, similarity_threshold: float = 0.85, ttl_seconds: int = 7200):
+    def __init__(self, similarity_threshold: float = 0.75, ttl_seconds: int = 7200):
         self.similarity_threshold = similarity_threshold
         self.ttl_seconds = ttl_seconds
         self._memory_exact_store: Dict[str, Dict[str, Any]] = {}
@@ -283,7 +283,7 @@ class EnterpriseCacheManager:
 
 
 # Singleton Cache Manager Instance
-cache_manager = EnterpriseCacheManager(similarity_threshold=0.85, ttl_seconds=7200)
+cache_manager = EnterpriseCacheManager(similarity_threshold=0.75, ttl_seconds=7200)
 
 # Backward-compatibility aliases for legacy references if any
 retrieval_cache = cache_manager
