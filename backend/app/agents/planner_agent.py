@@ -81,7 +81,7 @@ class PlannerAgent:
 
             for attempt in range(3):
                 try:
-                    # Use Groq Llama 70B for fast, 0.4s JSON task decomposition
+                    # Use Groq Llama 70B for flagship intent classification & task decomposition
                     llm = get_llm(model_name="groq/llama-70b", temperature=0.0)
                     response = llm.invoke(prompt)
                     response_text = extract_text_content(response.content)
