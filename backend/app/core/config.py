@@ -13,6 +13,10 @@ class Settings(BaseSettings):
 
     # Firebase / Firestore
     FIREBASE_CREDENTIALS_PATH: str = "./firebase_credentials.json"
+    # Firebase project ID — used for token verification without full service account
+    FIREBASE_PROJECT_ID: str = "project-edadbb90-c880-4851-84d"
+    # Full service account JSON string (set in Railway env vars for production)
+    FIREBASE_SERVICE_ACCOUNT_JSON: Optional[str] = None
 
     # Qdrant Vector Store
     QDRANT_MODE: str = "memory"  # Options: 'memory', 'cloud', 'local_host'

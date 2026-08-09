@@ -51,18 +51,25 @@ class FirestoreManager:
                         cred_dict = json.load(f)
                     logger.info(f"Firebase: using credentials from file '{cred_path}'")
 
-            # ── Initialize firebase_admin app ─────────────────────────────────
+            # ── Initialize firebase_admin app ─────────────────────────────────────
             if not firebase_admin._apps:
                 if cred_dict:
                     cred = fb_credentials.Certificate(cred_dict)
                     firebase_admin.initialize_app(cred)
                 else:
-                    # Attempt ADC (works on GCP, will fail on Railway without env var)
-                    logger.warning(
-                        "Firebase: no credentials found — attempting Application Default Credentials. "
-                        "Set FIREBASE_SERVICE_ACCOUNT_JSON env var for Railway deployments."
+                    # No service account available — initialize with project ID only.
+                    # This is sufficient for firebase_auth.verify_id_token() which
+                    # validates JWTs using Google's public keys (no credentials needed).
+                    # Firestore writes will NOT work in this mode (db remains None).
+                    from backend.app.core.config import settings as _settings
+                    firebase_admin.initialize_app(
+                        options={"projectId": _settings.FIREBASE_PROJECT_ID}
                     )
-                    firebase_admin.initialize_app()
+                    logger.info(
+                        f"Firebase Admin initialized in token-verification-only mode "
+                        f"(projectId={_settings.FIREBASE_PROJECT_ID}). "
+                        f"Set FIREBASE_SERVICE_ACCOUNT_JSON to enable Firestore persistence."
+                    )
 
             # ── Build Firestore client ─────────────────────────────────────────
             if cred_dict:
