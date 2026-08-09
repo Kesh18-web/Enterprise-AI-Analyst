@@ -43,7 +43,6 @@ class ReflectionAgent:
 
             # 3. Live LLM Self-Reflection Audit
             try:
-                # Use Gemini 2.5 Flash for ultra-fast self-critique audit without Groq quota limits
                 llm = get_llm(model_name="gemini-2.5-flash", temperature=0.0)
                 prompt = f"""
 User Query: '{query}'

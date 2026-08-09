@@ -29,7 +29,6 @@ class JudgeAgent:
             import time
             for attempt in range(3):
                 try:
-                    # Use Gemini 2.5 Flash for metric calculation without Groq quota limits
                     judge_llm = get_llm(model_name="gemini-2.5-flash", temperature=0.0)
                     
                     if not requires_rag:
