@@ -40,4 +40,4 @@ EXPOSE 3000
 
 # Railway injects $PORT and we pass $HOSTNAME=0.0.0.0 so Next.js binds on all interfaces.
 # server.js is placed at /app/server.js by Next.js standalone output.
-CMD HOSTNAME=0.0.0.0 PORT=${PORT:-3000} node server.js
+CMD ["sh", "-c", "HOSTNAME=0.0.0.0 PORT=${PORT:-3000} node server.js"]

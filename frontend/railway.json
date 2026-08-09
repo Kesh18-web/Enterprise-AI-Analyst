@@ -5,7 +5,6 @@
     "dockerfilePath": "Dockerfile"
   },
   "deploy": {
-    "startCommand": "HOSTNAME=0.0.0.0 PORT=$PORT node server.js",
     "restartPolicyType": "ON_FAILURE"
   }
 }
