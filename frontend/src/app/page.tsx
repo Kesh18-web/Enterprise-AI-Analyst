@@ -35,6 +35,11 @@ import {
   LogOut,
 } from "lucide-react";
 
+// ─── API Base URL ────────────────────────────────────────────────────────────
+// NEXT_PUBLIC_API_URL is baked in at build time by Next.js. Set it in Railway
+// frontend service env vars: NEXT_PUBLIC_API_URL=https://<backend>.up.railway.app
+const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
+
 // ─── Types ──────────────────────────────────────────────────────────────────
 
 interface NodeEvent {
@@ -153,7 +158,7 @@ export default function AnalystWorkbench() {
   const loadMessagesForSession = useCallback(async (sessionId: string) => {
     if (!sessionId || sessionId === "undefined") return;
     try {
-      const res = await fetch(`http://localhost:8000/api/v1/sessions/${sessionId}/messages`, {
+      const res = await fetch(`${API_BASE}/api/v1/sessions/${sessionId}/messages`, {
         headers: getAuthHeaders(),
       }).catch(() => null);
       if (res && res.ok) {
@@ -180,7 +185,7 @@ export default function AnalystWorkbench() {
     if (!idToken) return;
     const fetchSessions = async () => {
       try {
-        const res = await fetch("http://localhost:8000/api/v1/sessions", {
+        const res = await fetch(`${API_BASE}/api/v1/sessions`, {
           headers: getAuthHeaders(),
         }).catch(() => null);
         if (res && res.ok) {
@@ -204,7 +209,7 @@ export default function AnalystWorkbench() {
           } else {
             // First time setup — seed initial fresh chat in Firestore for this user
             const freshChat = createInitialChat();
-            await fetch("http://localhost:8000/api/v1/sessions", {
+            await fetch(`${API_BASE}/api/v1/sessions`, {
               method: "POST",
               headers: getAuthHeaders({ "Content-Type": "application/json" }),
               body: JSON.stringify({
@@ -249,7 +254,7 @@ export default function AnalystWorkbench() {
   // ── Health ─────────────────────────────────────────────────────────────────
   const [backendStatus, setBackendStatus] = useState<any>(null);
   useEffect(() => {
-    fetch("http://localhost:8000/api/v1/health")
+    fetch(`${API_BASE}/api/v1/health`)
       .then((r) => r.json())
       .then((d) => setBackendStatus(d))
       .catch(() => setBackendStatus({ status: "offline" }));
@@ -295,7 +300,7 @@ export default function AnalystWorkbench() {
     const nextScope = activeChat.searchScope === "session" ? "global" : "session";
     updateChat(activeChat.id, (c) => ({ ...c, searchScope: nextScope }));
     try {
-      await fetch(`http://localhost:8000/api/v1/sessions/${activeChat.id}`, {
+      await fetch(`${API_BASE}/api/v1/sessions/${activeChat.id}`, {
         method: "PATCH",
         headers: getAuthHeaders({ "Content-Type": "application/json" }),
         body: JSON.stringify({ searchScope: nextScope }),
@@ -318,7 +323,7 @@ export default function AnalystWorkbench() {
     setHitlRequired(false);
 
     try {
-      await fetch("http://localhost:8000/api/v1/sessions", {
+      await fetch(`${API_BASE}/api/v1/sessions`, {
         method: "POST",
         headers: getAuthHeaders({ "Content-Type": "application/json" }),
         body: JSON.stringify({
@@ -349,7 +354,7 @@ export default function AnalystWorkbench() {
     });
 
     try {
-      await fetch(`http://localhost:8000/api/v1/sessions/${chatId}`, {
+      await fetch(`${API_BASE}/api/v1/sessions/${chatId}`, {
         method: "DELETE",
         headers: getAuthHeaders(),
       });
@@ -371,7 +376,7 @@ export default function AnalystWorkbench() {
   const autoNameChat = async (chatId: string, firstQuery: string) => {
     if (!firstQuery.trim()) return;
     try {
-      const res = await fetch(`http://localhost:8000/api/v1/sessions/${chatId}/generate-name`, {
+      const res = await fetch(`${API_BASE}/api/v1/sessions/${chatId}/generate-name`, {
         method: "POST",
         headers: getAuthHeaders({ "Content-Type": "application/json" }),
         body: JSON.stringify({ query: firstQuery }),
@@ -403,7 +408,7 @@ export default function AnalystWorkbench() {
     formData.append("session_id", activeChat.id); // In-chat upload tagged to current chat!
 
     try {
-      const res = await fetch("http://localhost:8000/api/v1/documents/upload", {
+      const res = await fetch(`${API_BASE}/api/v1/documents/upload`, {
         method: "POST",
         headers: getAuthHeaders(),
         body: formData,
@@ -450,7 +455,7 @@ export default function AnalystWorkbench() {
       }));
 
       // Persist attachedFiles in Firestore session metadata
-      fetch(`http://localhost:8000/api/v1/sessions/${activeChat.id}`, {
+      fetch(`${API_BASE}/api/v1/sessions/${activeChat.id}`, {
         method: "PATCH",
         headers: getAuthHeaders({ "Content-Type": "application/json" }),
         body: JSON.stringify({ attachedFiles: updatedFiles }),
@@ -491,7 +496,7 @@ export default function AnalystWorkbench() {
 
     // Persist user message directly into Firestore database
     try {
-      fetch(`http://localhost:8000/api/v1/sessions/${chat.id}/messages`, {
+      fetch(`${API_BASE}/api/v1/sessions/${chat.id}/messages`, {
         method: "POST",
         headers: getAuthHeaders({ "Content-Type": "application/json" }),
         body: JSON.stringify(userMsg),
@@ -510,7 +515,7 @@ export default function AnalystWorkbench() {
     let hitlPayload: any = null;
 
     try {
-      const response = await fetch("http://localhost:8000/api/v1/analyze/stream", {
+      const response = await fetch(`${API_BASE}/api/v1/analyze/stream`, {
         method: "POST",
         headers: getAuthHeaders({ "Content-Type": "application/json" }),
         body: JSON.stringify({
@@ -615,7 +620,7 @@ export default function AnalystWorkbench() {
     if (!docTitle || !docContent) return;
     setIndexingStatus("Indexing chunks into Global Workspace Knowledge...");
     try {
-      const res = await fetch("http://localhost:8000/api/v1/documents/index", {
+      const res = await fetch(`${API_BASE}/api/v1/documents/index`, {
         method: "POST",
         headers: getAuthHeaders({ "Content-Type": "application/json" }),
         body: JSON.stringify({
@@ -1243,7 +1248,7 @@ export default function AnalystWorkbench() {
                         formData.append("file", file);
                         formData.append("session_id", "global_workspace");
                         try {
-                          const res = await fetch("http://localhost:8000/api/v1/documents/upload", {
+                          const res = await fetch(`${API_BASE}/api/v1/documents/upload`, {
                             method: "POST",
                             headers: getAuthHeaders(),
                             body: formData,
