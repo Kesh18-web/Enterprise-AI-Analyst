@@ -87,16 +87,26 @@ class FirestoreManager:
 
             # ── Build Firestore client ─────────────────────────────────────────
             if cred_dict:
-                gcp_creds = service_account.Credentials.from_service_account_info(
-                    cred_dict,
-                    scopes=["https://www.googleapis.com/auth/cloud-platform"],
-                )
+                cred_type = cred_dict.get("type", "service_account")
+                project_id = cred_dict.get("project_id") or cred_dict.get("quota_project_id") or settings.FIREBASE_PROJECT_ID
+
+                if cred_type == "authorized_user":
+                    from google.oauth2.credentials import Credentials as UserCredentials
+                    gcp_creds = UserCredentials.from_authorized_user_info(cred_dict)
+                    logger.info("Firebase: Using 'authorized_user' (gcloud ADC) OAuth credentials")
+                else:
+                    gcp_creds = service_account.Credentials.from_service_account_info(
+                        cred_dict,
+                        scopes=["https://www.googleapis.com/auth/cloud-platform"],
+                    )
+                    logger.info("Firebase: Using 'service_account' credentials")
+
                 self.db = gfirestore.Client(
-                    project=cred_dict.get("project_id"),
+                    project=project_id,
                     credentials=gcp_creds,
                     database="enterprise-analyst-db",
                 )
-                logger.info("Successfully connected to GCP Firestore database 'enterprise-analyst-db'")
+                logger.info(f"Successfully connected to GCP Firestore database 'enterprise-analyst-db' (project: {project_id})")
             else:
                 # Attempt ADC (only works if ADC is configured in environment)
                 try:
