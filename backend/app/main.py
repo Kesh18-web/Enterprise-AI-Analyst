@@ -28,14 +28,16 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
-# Enable CORS — locked to frontend origin (update for production domain)
+# Enable CORS — localhost for dev + wildcard regex for Railway deployment domains
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["http://localhost:3000"],
+    allow_origin_regex=r"https://.*\.up\.railway\.app",
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
 
 # Include API v1 Routers
 app.include_router(auth_router, prefix="/api/v1")
