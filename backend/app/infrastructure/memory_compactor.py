@@ -17,10 +17,10 @@ class DualMemoryManager:
         # In-memory storage per session_id: stores raw turns & active long-term summary
         self._session_store: Dict[str, Dict[str, Any]] = {}
 
-    def _get_or_create_session(self, session_id: str) -> Dict[str, Any]:
+    def _get_or_create_session(self, session_id: str, user_id: Optional[str] = None) -> Dict[str, Any]:
         if session_id not in self._session_store:
-            # Hydrate turns from persistent GCP Firestore storage
-            firestore_msgs = firestore_db.get_chat_messages(session_id)
+            # Hydrate turns from persistent GCP Firestore storage (if user_id provided)
+            firestore_msgs = firestore_db.get_chat_messages(user_id, session_id) if user_id else []
             turns: List[Dict[str, str]] = []
             curr_user = ""
             for msg in firestore_msgs:
@@ -40,9 +40,9 @@ class DualMemoryManager:
             }
         return self._session_store[session_id]
 
-    def add_turn(self, session_id: str, user_message: str, assistant_reply: str) -> None:
+    def add_turn(self, session_id: str, user_message: str, assistant_reply: str, user_id: Optional[str] = None) -> None:
         """Append a new interaction turn to the session memory."""
-        session = self._get_or_create_session(session_id)
+        session = self._get_or_create_session(session_id, user_id=user_id)
         session["turns"].append(
             {"user": user_message.strip(), "assistant": assistant_reply.strip()}
         )
@@ -51,13 +51,13 @@ class DualMemoryManager:
         )
 
     def get_compacted_context(
-        self, session_id: str, trace_id: str = "N/A"
+        self, session_id: str, trace_id: str = "N/A", user_id: Optional[str] = None
     ) -> Dict[str, Any]:
         """
         Fetch memory context. Compaction triggers ONLY when total_turns >= window_size (6)
         AND (total_turns - window_size) % batch_size == 0 (turns 6, 9, 12, 15...).
         """
-        session = self._get_or_create_session(session_id)
+        session = self._get_or_create_session(session_id, user_id=user_id)
         turns = session["turns"]
         total_turns = len(turns)
 

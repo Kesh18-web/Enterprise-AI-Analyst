@@ -35,7 +35,7 @@ async def stream_analysis_events(
     node_latencies: Dict[str, float] = {}
 
     # Fetch Dual Memory Context (Executive Long-Term Summary + Short-Term Turns)
-    mem_context = dual_memory_mgr.get_compacted_context(session_id, trace_id=trace_id)
+    mem_context = dual_memory_mgr.get_compacted_context(session_id, trace_id=trace_id, user_id=user_id)
 
     initial_state: AnalystState = {
         "user_query": query,
@@ -47,6 +47,7 @@ async def stream_analysis_events(
         "memory_compacted": mem_context.get("memory_compacted", False),
         "reflection_count": 0,
         "user_model_preference": model_preference or "auto",
+        "user_id": user_id,
     }
 
     logger.info(
@@ -111,7 +112,7 @@ async def stream_analysis_events(
         # Add new interaction turn to Dual Memory Store & Firestore
         if final_report:
             dual_memory_mgr.add_turn(
-                session_id=session_id, user_message=query, assistant_reply=final_report
+                session_id=session_id, user_message=query, assistant_reply=final_report, user_id=user_id
             )
 
         # Compute Telemetry (Token Count, USD Cost, Latencies)

@@ -39,7 +39,13 @@ def setup_logging():
 
     log_level = settings.LOG_LEVEL.upper()
 
-    # Console output handler
+    # Console output handler (UTF-8 safe for Windows terminals)
+    if hasattr(sys.stdout, "reconfigure"):
+        try:
+            sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+        except Exception:
+            pass
+
     logger.add(
         sys.stdout,
         level=log_level,
