@@ -127,8 +127,8 @@ async def generate_session_name(session_id: str, body: Dict[str, Any], current_u
         if not first_query:
             raise HTTPException(status_code=400, detail="query field is required")
 
-        # Use Groq for fast, lightweight, quota-friendly chat titling
-        llm = get_llm(model_name="groq/llama-70b", temperature=0.3, max_tokens=20)
+        # Use Gemini Flash Lite for fast, direct, clean 4-6 word chat titling
+        llm = get_llm(model_name="gemini", temperature=0.3, max_tokens=30)
         prompt = (
             "Generate a concise, descriptive chat title (4-6 words max) for the following user query. "
             "Do NOT use quotes, punctuation, or markdown. Output plain text title only.\n\n"

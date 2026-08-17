@@ -2,6 +2,7 @@
 LLM Factory — Direct dispatch using verified models (DeepSeek V4/V3, Groq Llama 3.3 70B, Gemini 2.5 Flash)
 and content extraction utilities.
 """
+import re
 from typing import Any, List, Optional
 from langchain_core.language_models.chat_models import BaseChatModel
 
@@ -24,12 +25,16 @@ except ImportError:
 def extract_text_content(content: Any) -> str:
     """
     Safely extract plain text from an LLM response.content property.
-    Handles plain strings as well as multi-part list-of-dicts.
+    Handles plain strings, AIMessage objects, and strips chain-of-thought <think> tags.
     """
     if not content:
         return ""
+    if hasattr(content, "content"):
+        content = content.content
     if isinstance(content, str):
-        return content.strip()
+        # Strip <think>...</think> if present
+        text = re.sub(r"<think>.*?</think>", "", content, flags=re.DOTALL).strip()
+        return text
     if isinstance(content, list):
         text_parts = []
         for item in content:
@@ -41,16 +46,17 @@ def extract_text_content(content: Any) -> str:
             elif isinstance(item, str):
                 text_parts.append(item)
         if text_parts:
-            return "\n".join(text_parts).strip()
+            joined = "\n".join(text_parts).strip()
+            return re.sub(r"<think>.*?</think>", "", joined, flags=re.DOTALL).strip()
     return str(content).strip()
 
 
 def _build_groq_70b_model(temperature: float = 0.0, max_tokens: Optional[int] = None) -> Optional[BaseChatModel]:
-    """Helper to build Groq Llama 3.3 70B model instance."""
+    """Helper to build Groq fast MoE model instance (openai/gpt-oss-20b)."""
     if settings.GROQ_API_KEY and HAS_OPENAI:
         try:
             return ChatOpenAI(
-                model="openai/gpt-oss-120b",
+                model="openai/gpt-oss-20b",
                 api_key=settings.GROQ_API_KEY,
                 base_url="https://api.groq.com/openai/v1",
                 temperature=temperature,
@@ -58,7 +64,7 @@ def _build_groq_70b_model(temperature: float = 0.0, max_tokens: Optional[int] = 
                 max_retries=0,
             )
         except Exception as e:
-            logger.error(f"[LLM Factory] Failed to build Groq 70B model: {e}")
+            logger.error(f"[LLM Factory] Failed to build Groq model: {e}")
     return None
 
 
