@@ -50,7 +50,7 @@ def _build_groq_70b_model(temperature: float = 0.0, max_tokens: Optional[int] = 
     if settings.GROQ_API_KEY and HAS_OPENAI:
         try:
             return ChatOpenAI(
-                model="llama-3.3-70b-versatile",
+                model="openai/gpt-oss-120b",
                 api_key=settings.GROQ_API_KEY,
                 base_url="https://api.groq.com/openai/v1",
                 temperature=temperature,
@@ -100,7 +100,7 @@ def _build_gemini_flash_model(temperature: float = 0.0, max_tokens: Optional[int
     if settings.GEMINI_API_KEY and HAS_GEMINI:
         try:
             return ChatGoogleGenerativeAI(
-                model="gemini-2.5-flash",
+                model="gemini-flash-lite-latest",
                 google_api_key=settings.GEMINI_API_KEY,
                 temperature=temperature,
                 max_output_tokens=max_tokens,
@@ -124,7 +124,9 @@ def get_llm(
     model = (model_name or "deepseek").lower()
 
     # Build Tier-1 Flagship Provider Instances
-    deepseek_model = _build_deepseek_model(temperature, max_tokens)
+    # DeepSeek disabled — API key expired (401). Fallback chain: Groq → Gemini.
+    # deepseek_model = _build_deepseek_model(temperature, max_tokens)
+    deepseek_model = None
     groq_70b = _build_groq_70b_model(temperature, max_tokens)
     gemini_flash = _build_gemini_flash_model(temperature, max_tokens)
 
